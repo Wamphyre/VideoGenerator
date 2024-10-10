@@ -4,7 +4,7 @@
 #define MyAppExeName "VideoGenerator.exe"
 
 [Setup]
-AppId={{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}
+AppId={{8CA97E1C-E25C-4EFF-BF86-2502FAD49A19}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}

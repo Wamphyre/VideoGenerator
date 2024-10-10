@@ -1,0 +1,8 @@
+moviepy
+Pillow
+numpy
+decorator
+imageio
+imageio-ffmpeg
+tqdm
+psutil

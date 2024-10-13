@@ -44,7 +44,7 @@ def procesar_audio(archivo_path):
         print(f"No se pudo cargar el archivo {archivo_path}: {str(e)}")
         return None
 
-def crear_video(directorio_audio, imagen_path, output_path, usar_gpu=False, add_info=print, update_progress=None):
+def crear_video(directorio_audio, imagen_path, output_path, codec='none', add_info=print, update_progress=None):
     formatos_audio = ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.wma']
     archivos_audio = [f for f in os.listdir(directorio_audio) if os.path.splitext(f.lower())[1] in formatos_audio]
     
@@ -98,21 +98,36 @@ def crear_video(directorio_audio, imagen_path, output_path, usar_gpu=False, add_
     if update_progress:
         update_progress(35)  # 35% del progreso después de procesar la imagen
 
-    # Configuración optimizada para AMD RADEON RX580 usando H.265 (HEVC)
-    if usar_gpu and platform.system() == 'Windows':
-        ffmpeg_params = [
-            "-c:v", "hevc_amf",
-            "-quality", "quality",
-            "-rc", "vbr_latency",
-            "-qp_i", "18", "-qp_p", "20", "-qp_b", "22",
-            "-b:v", "10M",
-            "-maxrate", "15M",
-            "-bufsize", "15M",
-            "-g", "250",
-            "-bf", "3",
-            "-profile:v", "main",
-            "-level", "5.1"
-        ]
+    # Configuración optimizada para AMD RADEON RX580 usando H.265 (HEVC) o H.264
+    if codec in ['h265', 'h264'] and platform.system() == 'Windows':
+        if codec == 'h264':
+            ffmpeg_params = [
+                "-c:v", "h264_amf",
+                "-quality", "quality",
+                "-rc", "vbr_latency",
+                "-qp_i", "18", "-qp_p", "20", "-qp_b", "22",
+                "-b:v", "10M",
+                "-maxrate", "15M",
+                "-bufsize", "15M",
+                "-g", "250",
+                "-bf", "3",
+                "-profile:v", "high",
+                "-level", "5.1"
+            ]
+        else:  # h265
+            ffmpeg_params = [
+                "-c:v", "hevc_amf",
+                "-quality", "quality",
+                "-rc", "vbr_latency",
+                "-qp_i", "18", "-qp_p", "20", "-qp_b", "22",
+                "-b:v", "10M",
+                "-maxrate", "15M",
+                "-bufsize", "15M",
+                "-g", "250",
+                "-bf", "3",
+                "-profile:v", "main",
+                "-level", "5.1"
+            ]
     else:
         ffmpeg_params = ["-c:v", "libx265", "-crf", "23", "-preset", "medium"]
 
@@ -152,7 +167,7 @@ class Application(tk.Frame):
     def __init__(self, master=None):
         super().__init__(master)
         self.master = master
-        self.master.title("VideoGenerator (Optimizado para AMD)")
+        self.master.title("VideoGenerator v1.1 (Optimizado para AMD)")
         self.master.geometry("900x500")
         self.master.resizable(False, False)
         
@@ -167,7 +182,7 @@ class Application(tk.Frame):
         self.master.iconbitmap(icon_path)
         
         self.pack(fill=tk.BOTH, expand=True)
-        self.usar_gpu = tk.BooleanVar()
+        self.codec_var = tk.StringVar(value="none")
         self.create_widgets()
 
     def create_widgets(self):
@@ -198,8 +213,13 @@ class Application(tk.Frame):
         option_frame = ttk.Frame(main_frame)
         option_frame.pack(fill=tk.X, pady=10)
 
-        self.gpu_check = ttk.Checkbutton(option_frame, text="Usar GPU AMD (solo Windows)", variable=self.usar_gpu)
-        self.gpu_check.pack(side=tk.LEFT, padx=5)
+        self.h265_radio = ttk.Radiobutton(option_frame, text="Usar GPU AMD con códec H.265 (Solo Windows)", 
+                                          variable=self.codec_var, value="h265")
+        self.h265_radio.pack(side=tk.LEFT, padx=5)
+
+        self.h264_radio = ttk.Radiobutton(option_frame, text="Usar GPU AMD con códec H.264 (Solo Windows)", 
+                                          variable=self.codec_var, value="h264")
+        self.h264_radio.pack(side=tk.LEFT, padx=5)
 
         self.generar_btn = ttk.Button(option_frame, text="Generar video", command=self.generar_video)
         self.generar_btn.pack(side=tk.RIGHT, padx=5)
@@ -284,7 +304,7 @@ class Application(tk.Frame):
     def generar_video_thread(self, output_path):
         try:
             crear_video(self.directorio_audio, self.imagen_path, output_path, 
-                        self.usar_gpu.get(), self.add_info, self.update_progress)
+                        self.codec_var.get(), self.add_info, self.update_progress)
             self.master.after(0, self.video_generado_exitosamente, output_path)
         except Exception as e:
             self.master.after(0, self.mostrar_error, str(e))

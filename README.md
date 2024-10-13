@@ -9,7 +9,7 @@ VideoGenerator es una aplicación avanzada que crea videos musicales combinando 
 - Ordenamiento automático de pistas de audio por número
 - Redimensionamiento y centrado automático de la imagen
 - Fade in y fade out de video
-- Optimización para GPU AMD en Windows utilizando H.265 (HEVC) con hevc_amf
+- Optimización para GPU AMD en Windows utilizando H.265 (HEVC) con hevc_amf o bien la posibilidad de usar H.264
 - Ajuste dinámico del uso de CPU basado en la carga del sistema y número de núcleos
 - Visualización detallada del progreso de codificación en tiempo real
 - Barra de progreso para seguimiento visual del proceso

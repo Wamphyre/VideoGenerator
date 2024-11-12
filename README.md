@@ -1,7 +1,9 @@
 # VideoGenerator
 
 ## Descripción
-VideoGenerator es una aplicación avanzada que crea videos musicales combinando archivos de audio con una imagen estática. Está optimizada para sistemas con CPU AMD Ryzen y GPU AMD Radeon, utilizando codificación H.265 (HEVC) para una mayor eficiencia y calidad.
+VideoGenerator es una aplicación avanzada que crea videos musicales combinando archivos de audio con una imagen estática. Está disponible en dos versiones optimizadas:
+- Versión Windows: Optimizada para sistemas con GPU AMD usando codificación H.265 (HEVC) vía AMF
+- Versión Linux: Optimizada para sistemas con GPU AMD usando codificación VAAPI (H.265/H.264)
 
 ## Características
 - Interfaz gráfica de usuario intuitiva
@@ -9,64 +11,99 @@ VideoGenerator es una aplicación avanzada que crea videos musicales combinando 
 - Ordenamiento automático de pistas de audio por número
 - Redimensionamiento y centrado automático de la imagen
 - Fade in y fade out de video
-- Optimización para GPU AMD en Windows utilizando H.265 (HEVC) con hevc_amf o bien la posibilidad de usar H.264
+- Optimización para GPU AMD:
+  - Windows: Codificación H.265 (HEVC) con hevc_amf o H.264
+  - Linux: Codificación mediante VAAPI (H.265/H.264)
 - Ajuste dinámico del uso de CPU basado en la carga del sistema y número de núcleos
 - Visualización detallada del progreso de codificación en tiempo real
 - Barra de progreso para seguimiento visual del proceso
 
 ## Requisitos
-- Python 3.7 o superior
+
+### Windows
 - FFmpeg (instalado y accesible desde la línea de comandos)
-- Bibliotecas Python: moviepy, Pillow, numpy, psutil
+- Controladores AMD actualizados para soporte AMF
+- Python 3.7 o superior (si se instala desde fuente)
 
-## Instalación (Multiplataforma con Python)
+### Linux
+- FFmpeg con soporte VAAPI
+- Mesa VA drivers
+- Python 3.7 o superior (si se instala desde fuente)
+- Dependencias del sistema:
+  ```
+  ffmpeg vainfo mesa-va-drivers libva-drm2 libva2 python3-tk python3-pil.imagetk
+  ```
 
-1. Clone el repositorio.
+## Instalación
 
-2. Instale las dependencias de Python:
+### Windows
+1. Método instalador:
+   - Descarga el instalador VideoGenerator-Setup.exe desde la página de releases
+   - Ejecuta el instalador y sigue las instrucciones en pantalla
+   - Abre VideoGenerator desde el menú de inicio o el acceso directo
+
+2. Desde fuente:
    ```
    pip install -r requirements.txt
+   python videogenerator.py
    ```
 
-3. Asegúrese de tener FFmpeg instalado en su sistema y accesible desde la línea de comandos.
+### Linux
+1. Método paquete DEB (recomendado):
+   ```bash
+   sudo dpkg -i videogenerator_1.1.deb
+   sudo apt-get install -f  # Si hay dependencias faltantes
+   ```
 
-## Instalación en Windows
-
-- Descarga el instalador VideoGenerator-Setup.exe desde la página de releases.
-- Ejecuta el instalador y sigue las instrucciones en pantalla.
-- Una vez instalado, puedes abrir VideoGenerator desde el menú de inicio o el acceso directo en el escritorio (si elegiste crearlo durante la instalación).
-
-- Nota: VideoGenerator requiere que tengas instalado FFmpeg en tu sistema. Si no lo tienes instalado, por favor visita ffmpeg.org para descargarlo e instalarlo antes de usar VideoGenerator.
+2. Desde fuente:
+   ```bash
+   # Instalar dependencias del sistema
+   sudo apt install ffmpeg vainfo mesa-va-drivers libva-drm2 libva2 python3-tk python3-pil.imagetk
+   
+   # Instalar dependencias de Python
+   pip3 install -r requirements.txt
+   
+   # Ejecutar el programa
+   python3 videogenerator.py
+   ```
 
 ## Uso
 
-1. Ejecute el script mediante terminal:
-   ```
-   python videogenerator.py
-   ```
-   O bien haciendo doble click sobre el fichero ejecutable.
+1. Inicie el programa:
+   - Windows: Desde el menú inicio o ejecutando el .exe
+   - Linux: Desde el menú de aplicaciones o mediante terminal (videogenerator)
 
 2. Use la interfaz gráfica para:
    - Seleccionar el directorio que contiene los archivos de audio
    - Elegir una imagen para el fondo del video
    - Seleccionar el directorio de salida para el video generado
    - Especificar un nombre para el archivo de video (opcional)
-   - Activar o desactivar el uso de GPU AMD para codificación H.265 (solo en Windows)
+   - Activar o desactivar el uso de GPU y seleccionar la calidad
 
 3. Haga clic en "Generar video" para iniciar el proceso.
 
 4. El progreso y los mensajes se mostrarán en la ventana de la aplicación.
 
 ## Notas
-- Para un rendimiento óptimo en sistemas con GPU AMD, asegúrese de tener los controladores más recientes instalados.
-- La codificación H.265 (HEVC) con GPU está optimizada para tarjetas AMD Radeon en sistemas Windows.
-- El uso de CPU se ajusta dinámicamente según la carga del sistema para un rendimiento óptimo.
-- El tiempo de procesamiento puede variar dependiendo de la duración total del audio, la potencia de su sistema y el uso de GPU vs CPU.
+- Para un rendimiento óptimo con GPU AMD:
+  - Windows: Asegúrese de tener los controladores más recientes con soporte AMF
+  - Linux: Asegúrese de tener los controladores Mesa y VAAPI correctamente instalados
+- El uso de CPU se ajusta dinámicamente según la carga del sistema
+- El tiempo de procesamiento dependerá de la duración del audio, la potencia del sistema y el uso de GPU vs CPU
 
 ## Solución de problemas
-- Si encuentra errores relacionados con FFmpeg, asegúrese de que está correctamente instalado y accesible desde la línea de comandos.
-- Para problemas con la codificación de GPU, intente desactivar la opción de uso de GPU y generar el video usando solo la CPU.
-- Si la ventana de log no muestra actualizaciones en tiempo real, asegúrese de que su sistema no esté sobrecargado.
+
+### Windows
+- Si encuentra errores con AMF, actualice los controladores de AMD
+- Verifique que FFmpeg está en el PATH del sistema
+
+### Linux
+- Para verificar el soporte VAAPI:
+  ```bash
+  vainfo
+  ```
+- Si hay problemas con la GPU, el programa automáticamente usará codificación por CPU
+- Verifique la instalación correcta de los controladores Mesa y VAAPI
 
 ## Licencia
 

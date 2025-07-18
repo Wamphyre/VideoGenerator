@@ -1,8 +1,17 @@
-moviepy
+# VideoGenerator para macOS - Dependencias
+# Python 3.8+ requerido
+
+# Interfaz gráfica (incluida en Python, pero por si acaso)
+tk
+
+# Procesamiento de imágenes
 Pillow
-numpy
-decorator
-imageio
-imageio-ffmpeg
-tqdm
+
+# Información del sistema y optimización
 psutil
+
+# Arrays numéricos para procesamiento eficiente
+numpy
+
+# Para mejor logging
+colorlog

@@ -1,119 +1,198 @@
 # VideoGenerator
 
-## Descripción
-VideoGenerator es una aplicación avanzada que crea videos musicales combinando archivos de audio con una imagen estática. Está disponible en dos versiones optimizadas:
-- Versión Windows: Optimizada para sistemas con GPU AMD usando codificación H.265 (HEVC) vía AMF
-- Versión Linux: Optimizada para sistemas con GPU AMD usando codificación VAAPI (H.265/H.264)
+A professional macOS application for creating music videos by combining audio files with static background images. Built with Python and optimized for macOS with native integration and hardware acceleration support.
 
-## Características
-- Interfaz gráfica de usuario intuitiva
-- Soporte para múltiples formatos de audio (.mp3, .wav, .ogg, .flac, .aac, .m4a, .wma)
-- Ordenamiento automático de pistas de audio por número
-- Redimensionamiento y centrado automático de la imagen
-- Fade in y fade out de video
-- Optimización para GPU AMD:
-  - Windows: Codificación H.265 (HEVC) con hevc_amf o H.264
-  - Linux: Codificación mediante VAAPI (H.265/H.264)
-- Ajuste dinámico del uso de CPU basado en la carga del sistema y número de núcleos
-- Visualización detallada del progreso de codificación en tiempo real
-- Barra de progreso para seguimiento visual del proceso
+![VideoGenerator](https://img.shields.io/badge/macOS-10.14+-blue.svg)
+![Python](https://img.shields.io/badge/Python-3.8+-green.svg)
+![License](https://img.shields.io/badge/License-BSD%203--Clause-orange.svg)
 
-## Requisitos
+## 🎥 What is VideoGenerator?
 
-### Windows
-- FFmpeg (instalado y accesible desde la línea de comandos)
-- Controladores AMD actualizados para soporte AMF
-- Python 3.7 o superior (si se instala desde fuente)
+VideoGenerator is a specialized tool designed for content creators, musicians, and video producers who need to quickly create professional music videos. It combines multiple audio files into a single video with a static background image, perfect for:
 
-### Linux
-- FFmpeg con soporte VAAPI
-- Mesa VA drivers
-- Python 3.7 o superior (si se instala desde fuente)
-- Dependencias del sistema:
-  ```
-  ffmpeg vainfo mesa-va-drivers libva-drm2 libva2 python3-tk python3-pil.imagetk
-  ```
+- **Music albums** - Create videos for entire albums or playlists
+- **Podcast episodes** - Add visual elements to audio content  
+- **Social media** - Generate engaging video content from audio
+- **YouTube uploads** - Convert audio-only content to video format
+- **Lyric videos** - Use custom background images with your music
 
-## Instalación
+## ✨ Key Features
 
-### Windows
-1. Método instalador:
-   - Descarga el instalador VideoGenerator-Setup.exe desde la página de releases
-   - Ejecuta el instalador y sigue las instrucciones en pantalla
-   - Abre VideoGenerator desde el menú de inicio o el acceso directo
+### 🎵 Audio Processing
+- **Multiple format support**: MP3, WAV, OGG, FLAC, AAC, M4A, WMA
+- **Automatic track ordering** by filename numbers
+- **Seamless concatenation** of multiple audio files
+- **High-quality audio encoding** (320k AAC)
 
-2. Desde fuente:
-   ```
-   pip install -r requirements.txt
-   python videogenerator.py
-   ```
+### 🖼️ Image Processing  
+- **Format support**: JPG, JPEG, PNG, BMP, TIFF
+- **Automatic optimization** for video output (1920x1080)
+- **Aspect ratio preservation** with letterboxing
+- **Background centering** with black bars if needed
 
-### Linux
-1. Método paquete DEB (recomendado):
-   ```bash
-   sudo dpkg -i videogenerator_1.1.deb
-   sudo apt-get install -f  # Si hay dependencias faltantes
-   ```
+### 🎬 Video Generation
+- **Quality presets**: Low, Medium, High, Ultra
+- **Hardware acceleration**: VideoToolbox support on macOS
+- **Fade effects**: Customizable fade in/out (2 seconds)
+- **Optimized encoding** for streaming and playback
 
-2. Desde fuente:
-   ```bash
-   # Instalar dependencias del sistema
-   sudo apt install ffmpeg vainfo mesa-va-drivers libva-drm2 libva2 python3-tk python3-pil.imagetk
-   
-   # Instalar dependencias de Python
-   pip3 install -r requirements.txt
-   
-   # Ejecutar el programa
-   python3 videogenerator.py
-   ```
+### 🍎 macOS Integration
+- **Finder integration** - Opens output location automatically
+- **Retina display support** - Optimized for high-DPI screens
+- **Keyboard shortcuts** - Power user friendly
 
-## Uso
+## 📋 System Requirements
 
-1. Inicie el programa:
-   - Windows: Desde el menú inicio o ejecutando el .exe
-   - Linux: Desde el menú de aplicaciones o mediante terminal (videogenerator)
+- **macOS**: 10.14 (Mojave) or later
+- **Architecture**: Intel and Apple Silicon (Universal Binary)
+- **Python**: 3.8+ (bundled with dependencies)
+- **Storage**: ~100MB for application and dependencies
 
-2. Use la interfaz gráfica para:
-   - Seleccionar el directorio que contiene los archivos de audio
-   - Elegir una imagen para el fondo del video
-   - Seleccionar el directorio de salida para el video generado
-   - Especificar un nombre para el archivo de video (opcional)
-   - Activar o desactivar el uso de GPU y seleccionar la calidad
+## 🚀 Installation
 
-3. Haga clic en "Generar video" para iniciar el proceso.
+### Option 1: Download Release (Recommended)
+1. Download the latest `VideoGenerator-X.X.X.dmg` from [Releases](https://github.com/Wamphyre/VideoGenerator/releases)
+2. Double-click the DMG file to mount it
+3. Drag `VideoGenerator.app` to your Applications folder
+4. Launch from Applications or Spotlight
 
-4. El progreso y los mensajes se mostrarán en la ventana de la aplicación.
+### Option 2: Build from Source
+```bash
+# Clone the repository
+git clone https://github.com/Wamphyre/VideoGenerator.git
+cd VideoGenerator
 
-## Notas
-- Para un rendimiento óptimo con GPU AMD:
-  - Windows: Asegúrese de tener los controladores más recientes con soporte AMF
-  - Linux: Asegúrese de tener los controladores Mesa y VAAPI correctamente instalados
-- El uso de CPU se ajusta dinámicamente según la carga del sistema
-- El tiempo de procesamiento dependerá de la duración del audio, la potencia del sistema y el uso de GPU vs CPU
+# Install Python dependencies
+pip3 install -r requirements.txt
 
-## Solución de problemas
+# Build native app (requires Xcode Command Line Tools)
+chmod +x build_with_platypus.sh
+./build_with_platypus.sh
 
-### Windows
-- Si encuentra errores con AMF, actualice los controladores de AMD
-- Verifique que FFmpeg está en el PATH del sistema
+# Install the built app
+cp -r dist/VideoGenerator.app /Applications/
+```
 
-### Linux
-- Para verificar el soporte VAAPI:
-  ```bash
-  vainfo
-  ```
-- Si hay problemas con la GPU, el programa automáticamente usará codificación por CPU
-- Verifique la instalación correcta de los controladores Mesa y VAAPI
+## 🎯 How to Use
 
-## Licencia
+### Basic Workflow
+1. **Select Audio Files** - Choose one or more audio files to combine
+2. **Choose Background Image** - Select a static image for the video background  
+3. **Set Output Location** - Choose where to save the generated video
+4. **Configure Options** - Adjust quality, effects, and encoding settings
+5. **Generate Video** - Click the blue "Generate Video" button
 
-Este proyecto está licenciado bajo la licencia BSD de 3 cláusulas.
+### Interface Overview
 
-Consulta el archivo LICENSE para más detalles.
+#### Files Section
+- **Audio Files**: Select multiple audio files (automatically ordered by filename)
+- **Background Image**: Choose a single image for the video background
+- **Output Settings**: Set save location and filename
 
-La licencia BSD de 3 cláusulas es una licencia de software libre permisiva que permite el uso, la redistribución y la modificación casi sin restricciones, siempre que se mantengan las atribuciones al autor original y la renuncia de garantías.
+#### Encoding Options
+- **Quality**: Choose from Low, Medium, High, or Ultra presets
+- **Hardware Acceleration**: Enable VideoToolbox for faster encoding (macOS only)
+- **Fade Effects**: Toggle fade in/out effects (2-second duration)
 
-## Autor
+#### Progress & Logging
+- **Real-time progress bar** with percentage completion
+- **Detailed activity log** with timestamps
+- **FFmpeg output** for troubleshooting
 
-Desarrollado con ❤️ por [Wamphyre](https://github.com/Wamphyre)
-Si te gusta puedes comprarme un café en https://ko-fi.com/wamphyre94078
+### Pro Tips
+- **File naming**: Number your audio files (01, 02, 03...) for proper ordering
+- **Image resolution**: Use high-resolution images (1920x1080 or higher) for best quality
+- **Hardware acceleration**: Enable for 2-3x faster encoding on supported Macs
+- **Quality settings**: Use "High" for most purposes, "Ultra" for archival quality
+
+## ⚙️ Technical Details
+
+### Architecture
+- **Frontend**: Python/Tkinter with native macOS styling
+- **Backend**: FFmpeg for video processing and encoding
+- **Launcher**: Native C executable to eliminate Python branding
+- **Packaging**: macOS app bundle with embedded dependencies
+
+### Video Specifications
+- **Resolution**: 1920x1080 (Full HD)
+- **Frame Rate**: 30 FPS
+- **Video Codec**: H.264 (hardware accelerated when available)
+- **Audio Codec**: AAC 320kbps, 48kHz stereo
+- **Container**: MP4 with fast-start optimization
+
+### Performance
+- **Hardware Encoding**: Uses VideoToolbox on supported Macs
+- **Multi-threading**: Utilizes all available CPU cores
+- **Memory Efficient**: Processes large files without excessive RAM usage
+- **Optimized I/O**: Minimizes disk operations during encoding
+
+## 🛠️ Development
+
+### Project Structure
+```
+VideoGenerator/
+├── videogenerator.py          # Main application code
+├── build_with_platypus.sh     # Build script for native app
+├── requirements.txt           # Python dependencies
+├── ffmpeg                     # Bundled FFmpeg binary
+├── icon.png                   # Application icon
+└── dist/                      # Build output directory
+    ├── VideoGenerator.app     # Native macOS application
+    └── VideoGenerator-X.X.X.dmg # Distribution package
+```
+
+### Dependencies
+- **tkinter**: GUI framework (built into Python)
+- **Pillow**: Image processing and optimization
+- **numpy**: Numerical operations for image handling
+- **psutil**: System information and process management
+- **FFmpeg**: Video encoding and processing (bundled)
+
+### Building
+The build process creates a native macOS application that:
+1. Compiles a C launcher to eliminate Python branding
+2. Bundles all Python dependencies
+3. Includes FFmpeg binary for video processing
+4. Creates proper macOS app bundle structure
+5. Generates DMG for easy distribution
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
+
+### Development Setup
+```bash
+git clone https://github.com/Wamphyre/VideoGenerator.git
+cd VideoGenerator
+pip3 install -r requirements.txt
+python3 videogenerator.py  # Run in development mode
+```
+
+### Reporting Issues
+When reporting bugs, please include:
+- macOS version
+- Python version
+- Error messages from the activity log
+- Steps to reproduce the issue
+
+## 📄 License
+
+This project is licensed under the BSD 3-Clause License - see the [LICENSE](LICENSE) file for details.
+
+## 💖 Support
+
+If you find VideoGenerator useful, consider supporting the project:
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-red.svg)](https://ko-fi.com/wamphyre94078)
+
+## 🔗 Links
+
+- **GitHub Repository**: https://github.com/Wamphyre/VideoGenerator
+- **Releases**: https://github.com/Wamphyre/VideoGenerator/releases
+- **Support**: https://ko-fi.com/wamphyre94078
+
+---
+
+**Made with ❤️ for the macOS community**
+
+*VideoGenerator - Transform your audio into engaging video content*

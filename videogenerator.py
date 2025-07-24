@@ -5,7 +5,8 @@ import os
 import sys
 import subprocess
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
+import customtkinter as ctk
 import re
 import platform
 from PIL import Image
@@ -22,48 +23,88 @@ import tempfile
 import shutil
 import json
 
-# CRITICAL: Hide Python from menu bar on macOS - THIS MUST BE FIRST
+def set_process_name():
+    """Set process name before creating the app to change menu bar name"""
+    try:
+        # Check if running from native app bundle
+        is_native_app = os.environ.get('VIDEOGENERATOR_APP') == '1'
+        
+        # Method 1: Set sys.argv[0] early
+        sys.argv[0] = "VideoGenerator"
+        
+        # Method 2: macOS specific - set process name using Foundation (most effective)
+        try:
+            import objc
+            from Foundation import NSProcessInfo, NSBundle
+            
+            # Set process name
+            NSProcessInfo.processInfo().setProcessName_("VideoGenerator")
+            
+            # If running as native app, also set bundle info
+            if is_native_app:
+                bundle = NSBundle.mainBundle()
+                if bundle:
+                    info = bundle.infoDictionary()
+                    if info:
+                        info['CFBundleName'] = 'VideoGenerator'
+                        info['CFBundleDisplayName'] = 'VideoGenerator'
+            
+            print("Process name set using Foundation framework")
+            
+        except ImportError:
+            # Foundation not available, try ctypes approach
+            try:
+                import ctypes
+                import ctypes.util
+                
+                # Load Foundation framework
+                foundation_lib = ctypes.util.find_library("Foundation")
+                if foundation_lib:
+                    objc_lib = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
+                    
+                    # Set up function signatures
+                    objc_lib.objc_getClass.restype = ctypes.c_void_p
+                    objc_lib.objc_getClass.argtypes = [ctypes.c_char_p]
+                    objc_lib.sel_registerName.restype = ctypes.c_void_p
+                    objc_lib.sel_registerName.argtypes = [ctypes.c_char_p]
+                    objc_lib.objc_msgSend.restype = ctypes.c_void_p
+                    objc_lib.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+                    
+                    # Get NSProcessInfo and set process name
+                    NSProcessInfo = objc_lib.objc_getClass(b"NSProcessInfo")
+                    processInfo = objc_lib.objc_msgSend(NSProcessInfo, objc_lib.sel_registerName(b"processInfo"))
+                    
+                    # Create NSString for "VideoGenerator"
+                    objc_lib.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+                    NSString = objc_lib.objc_getClass(b"NSString")
+                    app_name = objc_lib.objc_msgSend(NSString, objc_lib.sel_registerName(b"stringWithUTF8String:"), b"VideoGenerator")
+                    objc_lib.objc_msgSend(processInfo, objc_lib.sel_registerName(b"setProcessName:"), app_name)
+                    
+                    print("Process name set using ctypes Foundation framework")
+                    
+            except Exception as e:
+                print(f"Failed to set process name with ctypes: {e}")
+                
+    except Exception as e:
+        print(f"Failed to set process name: {e}")
+
+# Set process name early on macOS
+if platform.system() == 'Darwin':
+    set_process_name()
+
+# macOS initialization - simplified to avoid compatibility issues
 if platform.system() == 'Darwin':
     try:
-        # Method 1: Use AppKit to hide the application initially
-        from AppKit import NSApp, NSApplication, NSApplicationActivationPolicyRegular, NSApplicationActivationPolicyAccessory
-        app = NSApplication.sharedApplication()
-        # Set as accessory app initially (hides from Dock and menu)
-        app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
-        
-        # We'll change this to regular when GUI appears
+        from AppKit import NSApplication, NSApplicationActivationPolicyRegular
         def make_app_visible():
-            app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
-            
+            try:
+                app = NSApplication.sharedApplication()
+                app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
+            except:
+                pass
     except ImportError:
         def make_app_visible():
             pass
-    
-    try:
-        # Method 2: Change process name to VideoGenerator
-        import ctypes
-        import ctypes.util
-        libc = ctypes.CDLL(ctypes.util.find_library('c'))
-        # Set process name (this might help)
-        app_name = b'VideoGenerator'
-        try:
-            # Try Linux-style prctl
-            libc.prctl(15, app_name, 0, 0, 0)
-        except:
-            pass
-    except:
-        pass
-        
-    try:
-        # Method 3: Override argv[0] to change process name
-        sys.argv[0] = 'VideoGenerator'
-        if hasattr(sys, '_getframe'):
-            # Try to modify the process title
-            import setproctitle
-            setproctitle.setproctitle('VideoGenerator')
-    except:
-        pass
-        
 else:
     def make_app_visible():
         pass
@@ -75,26 +116,43 @@ logger = logging.getLogger(__name__)
 # Check operating system
 IS_MACOS = platform.system() == 'Darwin'
 
-# Get application directory
-if getattr(sys, 'frozen', False):
-    # If packaged application
-    APPLICATION_PATH = os.path.dirname(sys.executable)
-else:
-    # If normal script
-    APPLICATION_PATH = os.path.dirname(os.path.abspath(__file__))
+# Get application directory and FFmpeg path
+def get_application_path():
+    """Get the correct application path for both development and packaged versions"""
+    if getattr(sys, 'frozen', False):
+        # If packaged with PyInstaller
+        if hasattr(sys, '_MEIPASS'):
+            # PyInstaller temporary directory
+            return sys._MEIPASS
+        else:
+            # Other packaged application
+            return os.path.dirname(sys.executable)
+    else:
+        # If normal script
+        return os.path.dirname(os.path.abspath(__file__))
 
-# Path to bundled FFmpeg
-FFMPEG_PATH = os.path.join(APPLICATION_PATH, 'ffmpeg')
-FFPROBE_PATH = os.path.join(APPLICATION_PATH, 'ffprobe')  # If you also have ffprobe
+def find_ffmpeg():
+    """Find FFmpeg in various possible locations"""
+    base_path = get_application_path()
+    
+    # Possible FFmpeg locations
+    possible_paths = [
+        os.path.join(base_path, 'ffmpeg'),  # Same directory as script/executable
+        os.path.join(base_path, '..', 'Resources', 'ffmpeg'),  # macOS app bundle Resources
+        os.path.join(base_path, 'Resources', 'ffmpeg'),  # Alternative Resources location
+        './ffmpeg',  # Current directory fallback
+    ]
+    
+    for ffmpeg_path in possible_paths:
+        if os.path.exists(ffmpeg_path):
+            os.chmod(ffmpeg_path, 0o755)  # Ensure execution permissions
+            return ffmpeg_path
+    
+    return None
 
-# Ensure FFmpeg exists and is executable
-if os.path.exists(FFMPEG_PATH):
-    os.chmod(FFMPEG_PATH, 0o755)  # Ensure execution permissions
-else:
-    # Look in current directory as fallback
-    FFMPEG_PATH = './ffmpeg'
-    if os.path.exists(FFMPEG_PATH):
-        os.chmod(FFMPEG_PATH, 0o755)
+APPLICATION_PATH = get_application_path()
+FFMPEG_PATH = find_ffmpeg()
+FFPROBE_PATH = os.path.join(APPLICATION_PATH, 'ffprobe') if FFMPEG_PATH else None
 
 class VideoGenerator:
     """Video generator optimized for macOS with bundled FFmpeg"""
@@ -102,8 +160,8 @@ class VideoGenerator:
     def __init__(self):
         self.temp_dir = tempfile.mkdtemp(prefix='videogenerator_')
         self.executor = ThreadPoolExecutor(max_workers=multiprocessing.cpu_count())
-        self.ffmpeg_path = FFMPEG_PATH
-        self.ffprobe_path = FFPROBE_PATH if os.path.exists(FFPROBE_PATH) else self.ffmpeg_path
+        self.ffmpeg_path = find_ffmpeg()
+        self.ffprobe_path = self.ffmpeg_path  # Use same path for both
         
     def __del__(self):
         """Clean up resources"""
@@ -456,171 +514,112 @@ class VideoGenerator:
         return f"{bytes:.1f} TB"
 
 class VideoGeneratorGUI:
-    """macOS-optimized graphical interface"""
+    """Interfaz gráfica moderna con CustomTkinter"""
     
     def __init__(self):
-        self.root = tk.Tk()
+        # Configurar tema y apariencia de CustomTkinter
+        ctk.set_appearance_mode("dark")  # Modo oscuro por defecto
+        ctk.set_default_color_theme("blue")  # Tema azul
         
-        # CRITICAL: Make app visible and set proper name immediately
+        # Crear ventana principal compacta
+        self.root = ctk.CTk()
         self.root.title("VideoGenerator")
+        # La geometría se establece en setup_ui() para mejor control
         
-        # On macOS, make the app visible now that we have a window
+        # Configurar icono de la aplicación
+        self._setup_app_icon()
+        
+        # On macOS, setup immediately to prevent default menu creation
         if IS_MACOS:
             make_app_visible()
-            self.root.after(100, self._setup_macos_app)
+            # Call immediately, not after delay, to prevent default menu
+            self._setup_macos_app()
         
-        self.root.geometry("900x750")
-        self.root.resizable(False, False)
-        
-        # Configure dark theme colors
-        self.colors = {
-            'bg': '#2d2d2d',
-            'fg': '#ffffff',
-            'select_bg': '#404040',
-            'select_fg': '#ffffff',
-            'button_bg': '#505050',
-            'button_fg': '#ffffff',
-            'button_hover': '#606060',
-            'button_pressed': '#707070',
-            'entry_bg': '#404040',
-            'entry_fg': '#ffffff',
-            'disabled_fg': '#888888',
-            'accent': '#0066CC',
-            'accent_hover': '#0080FF',
-            'accent_pressed': '#004499',
-            'checkbox_hover': '#505050'  # Fixed checkbox hover color
-        }
-        
-        # Configure style for dark theme
-        self.style = ttk.Style()
-        
-        # Configure colors for dark theme
-        self.root.configure(bg=self.colors['bg'])
-        
-        # Configure ttk style for macOS appearance
-        self.style.theme_use('default')
-        
-        # Configure ttk widgets
-        self.style.configure('TLabel', background=self.colors['bg'], foreground=self.colors['fg'])
-        self.style.configure('TFrame', background=self.colors['bg'])
-        self.style.configure('TLabelframe', background=self.colors['bg'], foreground=self.colors['fg'])
-        self.style.configure('TLabelframe.Label', background=self.colors['bg'], foreground=self.colors['fg'])
-        
-        # Configure button style with rounded corners appearance
-        self.style.configure('TButton', 
-                           background=self.colors['button_bg'],
-                           foreground=self.colors['button_fg'],
-                           borderwidth=0,
-                           focuscolor='none',
-                           relief='flat',
-                           padding=(15, 8))
-        self.style.map('TButton',
-                      background=[('active', self.colors['button_hover']),
-                                 ('pressed', self.colors['button_pressed']),
-                                 ('disabled', '#303030')],
-                      foreground=[('disabled', self.colors['disabled_fg'])])
-        
-        # Accent button style (for primary actions)
-        self.style.configure('Accent.TButton', 
-                           background=self.colors['accent'],
-                           foreground='white',
-                           borderwidth=0,
-                           focuscolor='none',
-                           relief='flat',
-                           padding=(20, 8))
-        self.style.map('Accent.TButton',
-                      background=[('active', self.colors['accent_hover']),
-                                 ('pressed', self.colors['accent_pressed']),
-                                 ('disabled', '#303030')],
-                      foreground=[('disabled', self.colors['disabled_fg'])])
-        
-        # FIXED: Configure checkbutton style to prevent white hover
-        self.style.configure('TCheckbutton', 
-                           background=self.colors['bg'], 
-                           foreground=self.colors['fg'],
-                           focuscolor='none')
-        self.style.map('TCheckbutton',
-                      background=[('active', self.colors['checkbox_hover']),
-                                 ('selected', self.colors['bg']),
-                                 ('pressed', self.colors['bg'])],
-                      foreground=[('active', self.colors['fg']),
-                                 ('selected', self.colors['fg']),
-                                 ('pressed', self.colors['fg'])])
-        
-        # Combobox with better visibility
-        self.style.configure('TCombobox', 
-                           fieldbackground=self.colors['entry_bg'], 
-                           background=self.colors['button_bg'],
-                           foreground=self.colors['entry_fg'],
-                           borderwidth=0,
-                           arrowcolor=self.colors['fg'])
-        self.style.map('TCombobox',
-                      fieldbackground=[('readonly', self.colors['entry_bg'])],
-                      selectbackground=[('readonly', self.colors['select_bg'])],
-                      selectforeground=[('readonly', self.colors['select_fg'])])
-        
-        # Entry style
-        self.style.configure('TEntry', 
-                           fieldbackground=self.colors['entry_bg'], 
-                           foreground=self.colors['entry_fg'],
-                           borderwidth=0,
-                           insertcolor=self.colors['fg'])
-        
-        # Progress bar
-        self.style.configure('TProgressbar', 
-                           background=self.colors['accent'],
-                           troughcolor=self.colors['select_bg'],
-                           borderwidth=0,
-                           lightcolor=self.colors['accent'],
-                           darkcolor=self.colors['accent'])
-        
+        # Variables de la aplicación
         self.video_generator = VideoGenerator()
         self.audio_files = []
         self.image_path = None
         self.output_dir = None
         self.processing = False
-        self.output_filename = None  # Store filename for notification
+        self.output_filename = None
         
-        # Saved configuration
+        # Configuración guardada
         self.config_file = os.path.join(APPLICATION_PATH, 'config.json')
         self.load_config()
         
+        # Configurar la interfaz
         self.setup_ui()
         self.check_dependencies()
+    
+    def _setup_app_icon(self):
+        """Setup application icon"""
+        icon_path = os.path.join(APPLICATION_PATH, 'icon.png')
+        if os.path.exists(icon_path):
+            try:
+                # For CustomTkinter, we need to use the underlying tkinter window
+                icon_image = tk.PhotoImage(file=icon_path)
+                self.root.wm_iconphoto(True, icon_image)
+                # Keep a reference to prevent garbage collection
+                self.root.icon_image = icon_image
+            except Exception as e:
+                logger.warning(f"Could not set application icon: {e}")
     
     def _setup_macos_app(self):
         """Setup macOS specific app behavior"""
         if IS_MACOS:
             try:
-                # Try to set app name in menu
-                from AppKit import NSApp
-                NSApp.setMainMenu_(None)  # Clear menu initially
+                # Create our custom menu bar
+                self._create_custom_menubar()
                 
-                # Set application name
-                import Foundation
-                bundle = Foundation.NSBundle.mainBundle()
-                if bundle:
-                    info = bundle.localizedInfoDictionary() or bundle.infoDictionary()
-                    if info and info.get('CFBundleName') != 'VideoGenerator':
-                        info['CFBundleName'] = 'VideoGenerator'
-                        info['CFBundleDisplayName'] = 'VideoGenerator'
-                        
-            except ImportError:
-                pass
-            
-            try:
+                # Setup macOS commands to override default behavior
                 self.root.createcommand('tk::mac::ShowPreferences', self.show_preferences)
                 self.root.createcommand('tk::mac::ShowAbout', self.show_about)
-            except:
-                pass
-        
-        # Configure icon if exists
-        icon_path = os.path.join(APPLICATION_PATH, 'icon.png')
-        if os.path.exists(icon_path):
-            try:
-                self.root.iconphoto(True, tk.PhotoImage(file=icon_path))
-            except:
-                pass
+                self.root.createcommand('tk::mac::Quit', self.quit_app)
+                
+                # Keyboard shortcuts
+                self.root.bind('<Command-o>', lambda e: self.select_audio_files())
+                self.root.bind('<Command-i>', lambda e: self.select_image())
+                self.root.bind('<Command-g>', lambda e: self.generate_video())
+                self.root.bind('<Command-l>', lambda e: self.clear_log())
+                self.root.bind('<Command-q>', lambda e: self.quit_app())
+                self.root.bind('<Command-comma>', lambda e: self.show_preferences())
+                
+            except Exception as e:
+                print(f"Could not setup macOS menu: {e}")
+    
+    def _create_custom_menubar(self):
+        """Create custom menu bar without duplicating app name"""
+        try:
+            # Create empty menu bar first
+            menubar = tk.Menu(self.root)
+            
+            # File menu (first menu, no app menu to avoid duplication)
+            file_menu = tk.Menu(menubar, tearoff=0)
+            menubar.add_cascade(label="File", menu=file_menu)
+            file_menu.add_command(label="Select Audio Files...", command=self.select_audio_files, accelerator="Cmd+O")
+            file_menu.add_command(label="Select Background Image...", command=self.select_image, accelerator="Cmd+I")
+            file_menu.add_separator()
+            file_menu.add_command(label="Generate Video", command=self.generate_video, accelerator="Cmd+G")
+            file_menu.add_separator()
+            file_menu.add_command(label="Preferences...", command=self.show_preferences, accelerator="Cmd+,")
+            file_menu.add_separator()
+            file_menu.add_command(label="Quit VideoGenerator", command=self.quit_app, accelerator="Cmd+Q")
+            
+            # Edit menu
+            edit_menu = tk.Menu(menubar, tearoff=0)
+            menubar.add_cascade(label="Edit", menu=edit_menu)
+            edit_menu.add_command(label="Clear Log", command=self.clear_log, accelerator="Cmd+L")
+            
+            # Help menu
+            help_menu = tk.Menu(menubar, tearoff=0)
+            menubar.add_cascade(label="Help", menu=help_menu)
+            help_menu.add_command(label="About VideoGenerator", command=self.show_about)
+            
+            # Set the menu bar - this should replace the default one
+            self.root.config(menu=menubar)
+            
+        except Exception as e:
+            print(f"Could not create custom menu bar: {e}")
     
     def load_config(self):
         """Load saved configuration"""
@@ -654,195 +653,289 @@ class VideoGeneratorGUI:
         except:
             pass
     
-    def create_rounded_button(self, parent, text, command, style='TButton'):
-        """Create a button with rounded appearance"""
-        btn = ttk.Button(parent, text=text, command=command, style=style)
-        return btn
+
     
     def setup_ui(self):
-        """Configure user interface"""
-        # Main frame with padding
-        main_frame = ttk.Frame(self.root, padding="20")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        """Setup clean and minimal interface"""
+        # Configure window - taller for better log visibility
+        self.root.geometry("650x700")
+        self.root.minsize(600, 650)
         
-        # Files Section
-        files_frame = ttk.LabelFrame(main_frame, text="Files", padding="15")
-        files_frame.pack(fill=tk.X, pady=(0, 15))
+        # Main container without frame borders
+        self.root.grid_columnconfigure(0, weight=1)
+        self.root.grid_rowconfigure(0, weight=1)
         
-        # Audio Files
-        audio_container = ttk.Frame(files_frame)
-        audio_container.pack(fill=tk.X, pady=(0, 10))
+        main_container = ctk.CTkFrame(self.root, corner_radius=0, fg_color="transparent")
+        main_container.grid(row=0, column=0, sticky="nsew", padx=15, pady=15)
+        main_container.grid_columnconfigure(0, weight=1)
+        main_container.grid_rowconfigure(3, weight=1)
         
-        ttk.Label(audio_container, text="Audio Files", font=('System', 12, 'bold')).grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
+        # Section 1: File Selection - cleaner without frame
+        files_section = ctk.CTkFrame(main_container, corner_radius=8)
+        files_section.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        files_section.grid_columnconfigure(1, weight=1)
         
-        audio_btn_frame = ttk.Frame(audio_container)
-        audio_btn_frame.grid(row=1, column=0, sticky=tk.W)
+        # Audio files
+        ctk.CTkLabel(files_section, text="Audio Files:", font=ctk.CTkFont(size=13, weight="bold")).grid(
+            row=0, column=0, padx=15, pady=(15, 8), sticky="w"
+        )
         
-        self.create_rounded_button(audio_btn_frame, "Choose Files...", 
-                                  self.select_audio_files).pack(side=tk.LEFT)
-        self.audio_label = ttk.Label(audio_btn_frame, text="No files selected", foreground=self.colors['disabled_fg'])
-        self.audio_label.pack(side=tk.LEFT, padx=(10, 0))
+        audio_container = ctk.CTkFrame(files_section, fg_color="transparent")
+        audio_container.grid(row=0, column=1, sticky="ew", padx=(5, 15), pady=(15, 8))
+        audio_container.grid_columnconfigure(1, weight=1)
         
-        # Background Image
-        image_container = ttk.Frame(files_frame)
-        image_container.pack(fill=tk.X, pady=(0, 10))
+        self.audio_btn = ctk.CTkButton(
+            audio_container, text="Browse", command=self.select_audio_files, width=80, height=30
+        )
+        self.audio_btn.grid(row=0, column=0, padx=(0, 10))
         
-        ttk.Label(image_container, text="Background Image", font=('System', 12, 'bold')).grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
+        self.audio_label = ctk.CTkLabel(
+            audio_container, text="No files selected", text_color="gray60", font=ctk.CTkFont(size=12)
+        )
+        self.audio_label.grid(row=0, column=1, sticky="w")
         
-        image_btn_frame = ttk.Frame(image_container)
-        image_btn_frame.grid(row=1, column=0, sticky=tk.W)
+        # Background image
+        ctk.CTkLabel(files_section, text="Background:", font=ctk.CTkFont(size=13, weight="bold")).grid(
+            row=1, column=0, padx=15, pady=6, sticky="w"
+        )
         
-        self.create_rounded_button(image_btn_frame, "Choose Image...", 
-                                  self.select_image).pack(side=tk.LEFT)
-        self.image_label = ttk.Label(image_btn_frame, text="No image selected", foreground=self.colors['disabled_fg'])
-        self.image_label.pack(side=tk.LEFT, padx=(10, 0))
+        image_container = ctk.CTkFrame(files_section, fg_color="transparent")
+        image_container.grid(row=1, column=1, sticky="ew", padx=(5, 15), pady=6)
+        image_container.grid_columnconfigure(1, weight=1)
         
-        # Output Settings
-        output_container = ttk.Frame(files_frame)
-        output_container.pack(fill=tk.X)
+        self.image_btn = ctk.CTkButton(
+            image_container, text="Browse", command=self.select_image, width=80, height=30
+        )
+        self.image_btn.grid(row=0, column=0, padx=(0, 10))
         
-        ttk.Label(output_container, text="Output Settings", font=('System', 12, 'bold')).grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
+        self.image_label = ctk.CTkLabel(
+            image_container, text="No image selected", text_color="gray60", font=ctk.CTkFont(size=12)
+        )
+        self.image_label.grid(row=0, column=1, sticky="w")
         
-        output_frame = ttk.Frame(output_container)
-        output_frame.grid(row=1, column=0, sticky=tk.W)
+        # Output location
+        ctk.CTkLabel(files_section, text="Output:", font=ctk.CTkFont(size=13, weight="bold")).grid(
+            row=2, column=0, padx=15, pady=6, sticky="w"
+        )
         
-        self.create_rounded_button(output_frame, "Choose Location...", 
-                                  self.select_output_dir).pack(side=tk.LEFT)
-        self.output_label = ttk.Label(output_frame, text="No location selected", foreground=self.colors['disabled_fg'])
-        self.output_label.pack(side=tk.LEFT, padx=(10, 0))
+        output_container = ctk.CTkFrame(files_section, fg_color="transparent")
+        output_container.grid(row=2, column=1, sticky="ew", padx=(5, 15), pady=6)
+        output_container.grid_columnconfigure(1, weight=1)
         
-        ttk.Label(output_frame, text="Filename:").pack(side=tk.LEFT, padx=(20, 5))
+        self.output_btn = ctk.CTkButton(
+            output_container, text="Browse", command=self.select_output_dir, width=80, height=30
+        )
+        self.output_btn.grid(row=0, column=0, padx=(0, 10))
+        
+        self.output_label = ctk.CTkLabel(
+            output_container, text="No location selected", text_color="gray60", font=ctk.CTkFont(size=12)
+        )
+        self.output_label.grid(row=0, column=1, sticky="w")
+        
+        # Filename
+        filename_container = ctk.CTkFrame(files_section, fg_color="transparent")
+        filename_container.grid(row=3, column=0, columnspan=2, sticky="ew", padx=15, pady=(6, 15))
+        filename_container.grid_columnconfigure(1, weight=1)
+        
+        ctk.CTkLabel(filename_container, text="Filename:", font=ctk.CTkFont(size=12)).grid(
+            row=0, column=0, padx=(0, 10), sticky="w"
+        )
+        
         self.filename_var = tk.StringVar(value="output_video")
-        filename_entry = ttk.Entry(output_frame, textvariable=self.filename_var, width=20)
-        filename_entry.pack(side=tk.LEFT)
-        ttk.Label(output_frame, text=".mp4").pack(side=tk.LEFT)
+        self.filename_entry = ctk.CTkEntry(filename_container, textvariable=self.filename_var, height=30)
+        self.filename_entry.grid(row=0, column=1, sticky="ew", padx=(0, 6))
         
-        # Encoding Options Section
-        options_frame = ttk.LabelFrame(main_frame, text="Encoding Options", padding="15")
-        options_frame.pack(fill=tk.X, pady=(0, 15))
+        ctk.CTkLabel(filename_container, text=".mp4", font=ctk.CTkFont(size=12)).grid(row=0, column=2)
         
-        options_row1 = ttk.Frame(options_frame)
-        options_row1.pack(fill=tk.X)
+        # Section 2: Settings - horizontal layout
+        settings_section = ctk.CTkFrame(main_container, corner_radius=8)
+        settings_section.grid(row=1, column=0, sticky="ew", pady=(0, 12))
+        settings_section.grid_columnconfigure((1, 2, 3, 4), weight=1)
+        
+        ctk.CTkLabel(settings_section, text="Settings:", font=ctk.CTkFont(size=13, weight="bold")).grid(
+            row=0, column=0, padx=15, pady=15, sticky="w"
+        )
         
         # Quality
-        ttk.Label(options_row1, text="Quality:").pack(side=tk.LEFT, padx=(0, 5))
+        quality_container = ctk.CTkFrame(settings_section, fg_color="transparent")
+        quality_container.grid(row=0, column=1, padx=10, pady=15)
+        
+        ctk.CTkLabel(quality_container, text="Quality", font=ctk.CTkFont(size=11)).grid(row=0, column=0, pady=(0, 4))
+        
         self.quality_var = tk.StringVar(value=self.config.get('quality', 'high'))
-        quality_combo = ttk.Combobox(options_row1, textvariable=self.quality_var,
-                                    values=["low", "medium", "high", "ultra"],
-                                    state="readonly", width=10)
-        quality_combo.pack(side=tk.LEFT, padx=(0, 20))
-        quality_combo.bind('<<ComboboxSelected>>', lambda e: self.save_config())
+        self.quality_combo = ctk.CTkComboBox(
+            quality_container,
+            values=["low", "medium", "high", "ultra"],
+            variable=self.quality_var,
+            command=lambda x: self.save_config(),
+            width=85,
+            height=28
+        )
+        self.quality_combo.grid(row=1, column=0)
         
-        # Hardware acceleration
+        # Checkboxes
         self.use_hardware_var = tk.BooleanVar(value=self.config.get('use_hardware', True))
-        hw_check = ttk.Checkbutton(options_row1, text="Use hardware acceleration",
-                                  variable=self.use_hardware_var,
-                                  command=self.save_config)
-        hw_check.pack(side=tk.LEFT, padx=(0, 20))
+        self.hw_check = ctk.CTkCheckBox(
+            settings_section,
+            text="Hardware\nAcceleration",
+            variable=self.use_hardware_var,
+            command=self.save_config,
+            font=ctk.CTkFont(size=11)
+        )
+        self.hw_check.grid(row=0, column=2, padx=10, pady=15)
         
-        # Fade effects
         self.fade_in_var = tk.BooleanVar(value=self.config.get('fade_in', True))
+        self.fade_in_check = ctk.CTkCheckBox(
+            settings_section,
+            text="Fade In",
+            variable=self.fade_in_var,
+            command=self.save_config,
+            font=ctk.CTkFont(size=11)
+        )
+        self.fade_in_check.grid(row=0, column=3, padx=10, pady=15)
+        
         self.fade_out_var = tk.BooleanVar(value=self.config.get('fade_out', True))
+        self.fade_out_check = ctk.CTkCheckBox(
+            settings_section,
+            text="Fade Out",
+            variable=self.fade_out_var,
+            command=self.save_config,
+            font=ctk.CTkFont(size=11)
+        )
+        self.fade_out_check.grid(row=0, column=4, padx=(10, 15), pady=15)
         
-        fade_in_check = ttk.Checkbutton(options_row1, text="Fade in",
-                                       variable=self.fade_in_var,
-                                       command=self.save_config)
-        fade_in_check.pack(side=tk.LEFT, padx=(0, 10))
+        # Section 3: Progress and Generate - compact
+        action_section = ctk.CTkFrame(main_container, corner_radius=8)
+        action_section.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+        action_section.grid_columnconfigure(1, weight=1)
         
-        fade_out_check = ttk.Checkbutton(options_row1, text="Fade out",
-                                        variable=self.fade_out_var,
-                                        command=self.save_config)
-        fade_out_check.pack(side=tk.LEFT)
+        # Progress
+        progress_container = ctk.CTkFrame(action_section, fg_color="transparent")
+        progress_container.grid(row=0, column=0, sticky="ew", padx=15, pady=15)
+        progress_container.grid_columnconfigure(0, weight=1)
         
-        # Progress Section
-        progress_frame = ttk.Frame(main_frame)
-        progress_frame.pack(fill=tk.X, pady=(0, 15))
+        self.progress_label = ctk.CTkLabel(
+            progress_container, text="Ready", font=ctk.CTkFont(size=12, weight="bold")
+        )
+        self.progress_label.grid(row=0, column=0, sticky="w", pady=(0, 6))
         
-        self.progress_label = ttk.Label(progress_frame, text="Ready")
-        self.progress_label.pack(anchor=tk.W)
+        self.progress_bar = ctk.CTkProgressBar(progress_container, height=14)
+        self.progress_bar.grid(row=1, column=0, sticky="ew")
+        self.progress_bar.set(0)
         
-        self.progress_var = tk.DoubleVar()
-        self.progress_bar = ttk.Progressbar(progress_frame, variable=self.progress_var,
-                                           maximum=1.0, mode='determinate')
-        self.progress_bar.pack(fill=tk.X, pady=(5, 0))
+        # Generate button
+        self.generate_btn = ctk.CTkButton(
+            action_section,
+            text="Generate Video",
+            command=self.generate_video,
+            width=130,
+            height=42,
+            font=ctk.CTkFont(size=14, weight="bold")
+        )
+        self.generate_btn.grid(row=0, column=1, padx=(15, 10), pady=15)
         
-        # Log Section
-        log_frame = ttk.LabelFrame(main_frame, text="Activity Log", padding="10")
-        log_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        # Utility buttons
+        utils_container = ctk.CTkFrame(action_section, fg_color="transparent")
+        utils_container.grid(row=0, column=2, padx=(0, 15), pady=15)
         
-        # Create text widget with scrollbar
-        log_container = ttk.Frame(log_frame)
-        log_container.pack(fill=tk.BOTH, expand=True)
+        self.clear_btn = ctk.CTkButton(
+            utils_container,
+            text="Clear Log",
+            command=self.clear_log,
+            width=75,
+            height=30,
+            fg_color="gray40",
+            hover_color="gray50",
+            font=ctk.CTkFont(size=11)
+        )
+        self.clear_btn.grid(row=0, column=0, pady=(0, 6))
         
-        # Configure log text widget with proper colors
-        self.log_text = tk.Text(log_container, height=12, wrap=tk.WORD,
-                               font=('Monaco', 10), 
-                               bg=self.colors['bg'], 
-                               fg=self.colors['fg'],
-                               selectbackground=self.colors['select_bg'],
-                               selectforeground=self.colors['select_fg'],
-                               insertbackground=self.colors['fg'])
+        self.prefs_btn = ctk.CTkButton(
+            utils_container,
+            text="Settings",
+            command=self.show_preferences,
+            width=75,
+            height=30,
+            fg_color="gray40",
+            hover_color="gray50",
+            font=ctk.CTkFont(size=11)
+        )
+        self.prefs_btn.grid(row=1, column=0)
         
-        scrollbar = ttk.Scrollbar(log_container, orient="vertical", command=self.log_text.yview)
-        self.log_text.configure(yscrollcommand=scrollbar.set)
+        # Section 4: Activity Log - much more space
+        log_section = ctk.CTkFrame(main_container, corner_radius=8)
+        log_section.grid(row=3, column=0, sticky="nsew", pady=(0, 0))
+        log_section.grid_columnconfigure(0, weight=1)
+        log_section.grid_rowconfigure(1, weight=1)
         
-        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        ctk.CTkLabel(log_section, text="Activity Log:", font=ctk.CTkFont(size=13, weight="bold")).grid(
+            row=0, column=0, padx=15, pady=(15, 8), sticky="w"
+        )
         
-        # Buttons Section - Fixed positioning
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X, side=tk.BOTTOM)
-        
-        # Create a container for better button layout
-        button_container = ttk.Frame(button_frame)
-        button_container.pack(side=tk.RIGHT)
-        
-        # Generate Video button (Primary action - make it more prominent)
-        self.generate_btn = self.create_rounded_button(button_container, "Generate Video",
-                                                      self.generate_video,
-                                                      style='Accent.TButton')
-        self.generate_btn.pack(side=tk.RIGHT, padx=(10, 0))
-        
-        # Clear Log button
-        self.clear_btn = self.create_rounded_button(button_container, "Clear Log",
-                                                    self.clear_log)
-        self.clear_btn.pack(side=tk.RIGHT)
+        self.log_text = ctk.CTkTextbox(
+            log_section,
+            font=ctk.CTkFont(family="Monaco", size=10),
+            wrap="word"
+        )
+        self.log_text.grid(row=1, column=0, sticky="nsew", padx=15, pady=(0, 15))
     
     def check_dependencies(self):
         """Check dependencies"""
-        self.log("Checking FFmpeg...")
         ffmpeg_ok, hw_available, msg = self.video_generator.check_ffmpeg()
         
         if not ffmpeg_ok:
-            self.log(f"Error: {msg}")
-            # Use after to avoid the modalSession error
+            self.log(f"❌ Error: {msg}")
+            # Use after to avoid modalSession error
             self.root.after(100, lambda: messagebox.showerror(
                 "FFmpeg Not Found",
                 f"FFmpeg is not available:\n{msg}\n\n"
                 "Please ensure the 'ffmpeg' file is in the same directory as this application."
             ))
         else:
-            self.log(f"FFmpeg found at: {self.video_generator.ffmpeg_path}")
+            self.log(f"✅ FFmpeg ready")
             
+            # System information (only once)
+            self.log(f"💻 System: macOS {platform.mac_ver()[0]}")
+            
+            # GPU information
+            try:
+                import subprocess
+                gpu_info = subprocess.run(['system_profiler', 'SPDisplaysDataType'], 
+                                        capture_output=True, text=True)
+                if gpu_info.returncode == 0:
+                    # Extract GPU model from system_profiler output
+                    lines = gpu_info.stdout.split('\n')
+                    for line in lines:
+                        if 'Chipset Model:' in line or 'Graphics:' in line:
+                            gpu_model = line.split(':')[-1].strip()
+                            self.log(f"🎮 GPU: {gpu_model}")
+                            break
+                    else:
+                        self.log("🎮 GPU: Unknown")
+                else:
+                    self.log("🎮 GPU: Unknown")
+            except:
+                self.log("🎮 GPU: Unknown")
+            
+            # Hardware acceleration status
             if IS_MACOS and hw_available:
-                self.log("VideoToolbox available for hardware acceleration")
+                self.log("✅ Hardware acceleration: Available (VideoToolbox)")
             elif IS_MACOS:
-                self.log("VideoToolbox not available - using software encoding")
+                self.log("⚠️ Hardware acceleration: Not available - using software encoding")
                 self.use_hardware_var.set(False)
-            
-            # System information
-            self.log(f"System: macOS {platform.mac_ver()[0]}")
+            else:
+                self.log("⚠️ Hardware acceleration: Not available on this platform")
     
     def log(self, message):
         """Add message to log with timestamp"""
         timestamp = time.strftime("%H:%M:%S")
-        self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
-        self.log_text.see(tk.END)
+        self.log_text.insert("end", f"[{timestamp}] {message}\n")
+        self.log_text.see("end")
         self.root.update_idletasks()
     
     def clear_log(self):
         """Clear the log"""
-        self.log_text.delete(1.0, tk.END)
+        self.log_text.delete("0.0", "end")
     
     def select_audio_files(self):
         """Select audio files"""
@@ -864,12 +957,14 @@ class VideoGeneratorGUI:
             
             self.audio_files = sorted(files, 
                 key=lambda x: VideoGenerator.get_track_number(os.path.basename(x)))
-            self.audio_label.config(text=f"{len(self.audio_files)} files selected", foreground=self.colors['fg'])
-            self.log(f"Selected {len(self.audio_files)} audio files:")
+            self.audio_label.configure(text=f"{len(self.audio_files)} files selected", text_color="green")
+            self.log(f"✓ Selected {len(self.audio_files)} audio files")
             
-            # Show order
-            for i, file in enumerate(self.audio_files, 1):
+            # Show only first 3 to avoid log clutter
+            for i, file in enumerate(self.audio_files[:3], 1):
                 self.log(f"  {i}. {os.path.basename(file)}")
+            if len(self.audio_files) > 3:
+                self.log(f"  ... and {len(self.audio_files) - 3} more")
     
     def select_image(self):
         """Select background image"""
@@ -890,14 +985,16 @@ class VideoGeneratorGUI:
             self.save_config()
             
             self.image_path = file
-            self.image_label.config(text=os.path.basename(file), foreground=self.colors['fg'])
-            self.log(f"Selected image: {os.path.basename(file)}")
+            filename = os.path.basename(file)
+            if len(filename) > 30:
+                filename = filename[:27] + "..."
+            self.image_label.configure(text=f"{filename}", text_color="green")
+            self.log(f"✓ Image: {os.path.basename(file)}")
             
             # Show image information
             try:
                 img = Image.open(file)
-                self.log(f"  Dimensions: {img.width}x{img.height}")
-                self.log(f"  Format: {img.format}")
+                self.log(f"  {img.width}x{img.height} • {img.format}")
             except:
                 pass
     
@@ -912,14 +1009,14 @@ class VideoGeneratorGUI:
         
         if directory:
             self.output_dir = directory
-            # Show shortened path
-            display_path = directory
-            if len(display_path) > 40:
-                display_path = "..." + display_path[-37:]
-            self.output_label.config(text=display_path, foreground=self.colors['fg'])
-            self.log(f"Output location: {directory}")
+            # Show shortened path for compact interface
+            display_path = os.path.basename(directory)
+            if not display_path:
+                display_path = directory.split('/')[-2] if '/' in directory else directory
+            self.output_label.configure(text=f"{display_path}", text_color="green")
+            self.log(f"✓ Output: {directory}")
             
-            # Save as last directory used
+            # Save as last used directory
             self.config['last_output_dir'] = directory
             self.save_config()
     
@@ -957,10 +1054,11 @@ class VideoGeneratorGUI:
         
         # Disable controls
         self.processing = True
-        self.generate_btn.config(state="disabled")
-        self.clear_btn.config(state="disabled")
-        self.progress_var.set(0)
-        self.progress_label.config(text="Processing...")
+        self.generate_btn.configure(state="disabled", text="Processing...")
+        self.clear_btn.configure(state="disabled")
+        self.prefs_btn.configure(state="disabled")
+        self.progress_bar.set(0)
+        self.progress_label.configure(text="Starting...")
         
         # Generate in separate thread
         thread = threading.Thread(
@@ -1036,19 +1134,20 @@ class VideoGeneratorGUI:
     def update_progress(self, value):
         """Update progress bar"""
         def update():
-            self.progress_var.set(value)
+            self.progress_bar.set(value)
             percentage = int(value * 100)
-            self.progress_label.config(text=f"Processing... {percentage}%")
+            self.progress_label.configure(text=f"Processing {percentage}%")
         
         self.root.after(0, update)
     
     def _reset_ui(self):
-        """Reset the interface"""
+        """Reset interface"""
         self.processing = False
-        self.generate_btn.config(state="normal")
-        self.clear_btn.config(state="normal")
-        self.progress_var.set(0)
-        self.progress_label.config(text="Ready")
+        self.generate_btn.configure(state="normal", text="Generate Video")
+        self.clear_btn.configure(state="normal")
+        self.prefs_btn.configure(state="normal")
+        self.progress_bar.set(0)
+        self.progress_label.configure(text="Ready")
     
     def send_notification(self, title, message):
         """Send system notification on macOS"""
@@ -1062,74 +1161,111 @@ class VideoGeneratorGUI:
     
     def show_preferences(self):
         """Show preferences window"""
-        pref_window = tk.Toplevel(self.root)
-        pref_window.title("Preferences")
-        pref_window.geometry("500x450")
+        pref_window = ctk.CTkToplevel(self.root)
+        pref_window.title("Settings")
+        pref_window.geometry("550x450")
         pref_window.transient(self.root)
+        pref_window.grab_set()  # Make modal
         
-        # Configure window background
-        pref_window.configure(bg=self.colors['bg'])
+        # Configure grid
+        pref_window.grid_columnconfigure(0, weight=1)
+        pref_window.grid_rowconfigure(0, weight=1)
         
-        # Main frame
-        pref_frame = ttk.Frame(pref_window, padding="20")
-        pref_frame.pack(fill=tk.BOTH, expand=True)
+        # Main frame with scroll
+        main_frame = ctk.CTkScrollableFrame(pref_window)
+        main_frame.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
+        main_frame.grid_columnconfigure(0, weight=1)
         
         # Title
-        title_label = ttk.Label(pref_frame, text="Preferences", 
-                               font=('System', 18, 'bold'))
-        title_label.pack(pady=(0, 20))
+        title_label = ctk.CTkLabel(
+            main_frame, 
+            text="Settings", 
+            font=ctk.CTkFont(size=22, weight="bold")
+        )
+        title_label.grid(row=0, column=0, pady=(0, 25))
         
-        # FFmpeg information
-        info_frame = ttk.LabelFrame(pref_frame, text="System Information", padding="15")
-        info_frame.pack(fill=tk.X, pady=10)
+        # System information
+        info_frame = ctk.CTkFrame(main_frame)
+        info_frame.grid(row=1, column=0, sticky="ew", pady=(0, 20))
+        info_frame.grid_columnconfigure(0, weight=1)
         
-        # Create labels with proper spacing
-        ffmpeg_name_label = ttk.Label(info_frame, text=f"FFmpeg: {os.path.basename(self.video_generator.ffmpeg_path)}")
-        ffmpeg_name_label.pack(anchor=tk.W, pady=(0, 5))
+        ctk.CTkLabel(
+            info_frame, 
+            text="System Information", 
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).grid(row=0, column=0, sticky="w", padx=20, pady=(20, 15))
         
-        # Use a frame for better path display
-        path_frame = ttk.Frame(info_frame)
-        path_frame.pack(fill=tk.X, pady=(0, 10))
+        # FFmpeg info
+        ffmpeg_info = f"FFmpeg: {os.path.basename(self.video_generator.ffmpeg_path)}"
+        ctk.CTkLabel(info_frame, text=ffmpeg_info, font=ctk.CTkFont(size=12)).grid(row=1, column=0, sticky="w", padx=20, pady=5)
         
-        ttk.Label(path_frame, text="Location:").pack(side=tk.LEFT, padx=(0, 5))
+        # Location
+        location_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
+        location_frame.grid(row=2, column=0, sticky="ew", padx=20, pady=10)
+        location_frame.grid_columnconfigure(1, weight=1)
         
-        # Path in a text widget for better display
-        path_text = tk.Text(path_frame, height=2, wrap=tk.WORD,
-                           font=('Monaco', 9), 
-                           bg=self.colors['entry_bg'], 
-                           fg=self.colors['entry_fg'])
-        path_text.insert(1.0, self.video_generator.ffmpeg_path)
-        path_text.config(state='disabled')
-        path_text.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ctk.CTkLabel(location_frame, text="Location:", font=ctk.CTkFont(size=12)).grid(row=0, column=0, sticky="w", padx=(0, 10))
         
-        # Button to reveal FFmpeg in Finder
-        finder_btn = self.create_rounded_button(info_frame, "Show in Finder", 
-                                               lambda: subprocess.run(['open', '-R', self.video_generator.ffmpeg_path]))
-        finder_btn.pack(pady=(5, 0))
+        path_text = ctk.CTkTextbox(location_frame, height=50, font=ctk.CTkFont(family="Monaco", size=9))
+        path_text.grid(row=0, column=1, sticky="ew")
+        path_text.insert("0.0", self.video_generator.ffmpeg_path)
+        path_text.configure(state="disabled")
+        
+        # Show in Finder button
+        finder_btn = ctk.CTkButton(
+            info_frame,
+            text="Show in Finder",
+            command=lambda: subprocess.run(['open', '-R', self.video_generator.ffmpeg_path]),
+            width=130,
+            height=32
+        )
+        finder_btn.grid(row=3, column=0, padx=20, pady=(10, 20))
         
         # Default directories
-        dirs_frame = ttk.LabelFrame(pref_frame, text="Default Directories", padding="15")
-        dirs_frame.pack(fill=tk.X, pady=10)
+        dirs_frame = ctk.CTkFrame(main_frame)
+        dirs_frame.grid(row=2, column=0, sticky="ew", pady=(0, 20))
         
-        dirs_label = ttk.Label(dirs_frame, text="Selected directories are remembered automatically",
-                              font=('System', 11))
-        dirs_label.pack()
+        ctk.CTkLabel(
+            dirs_frame, 
+            text="Default Directories", 
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).grid(row=0, column=0, sticky="w", padx=20, pady=(20, 10))
         
-        # Clean temp files section
-        clean_frame = ttk.Frame(pref_frame)
-        clean_frame.pack(fill=tk.X, pady=(20, 10))
+        ctk.CTkLabel(
+            dirs_frame, 
+            text="Selected directories are remembered automatically",
+            text_color="gray60",
+            font=ctk.CTkFont(size=11)
+        ).grid(row=1, column=0, sticky="w", padx=20, pady=(0, 20))
         
-        clean_btn = self.create_rounded_button(clean_frame, "Clean Temporary Files", 
-                                              self.clean_temp_files)
-        clean_btn.pack()
+        # Clean temporary files
+        clean_frame = ctk.CTkFrame(main_frame)
+        clean_frame.grid(row=3, column=0, sticky="ew", pady=(0, 20))
+        
+        ctk.CTkLabel(
+            clean_frame, 
+            text="Maintenance", 
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).grid(row=0, column=0, sticky="w", padx=20, pady=(20, 10))
+        
+        clean_btn = ctk.CTkButton(
+            clean_frame,
+            text="Clean Temporary Files",
+            command=self.clean_temp_files,
+            width=180,
+            height=32
+        )
+        clean_btn.grid(row=1, column=0, padx=20, pady=(0, 20))
         
         # Close button
-        close_frame = ttk.Frame(pref_frame)
-        close_frame.pack(side=tk.BOTTOM, pady=(0))
-        
-        close_btn = self.create_rounded_button(close_frame, "Close", 
-                                              pref_window.destroy)
-        close_btn.pack()
+        close_btn = ctk.CTkButton(
+            main_frame,
+            text="Close",
+            command=pref_window.destroy,
+            width=100,
+            height=35
+        )
+        close_btn.grid(row=4, column=0, pady=20)
     
     def clean_temp_files(self):
         """Clean temporary files"""
@@ -1153,81 +1289,117 @@ class VideoGeneratorGUI:
     
     def show_about(self):
         """Show About window"""
-        about_window = tk.Toplevel(self.root)
+        about_window = ctk.CTkToplevel(self.root)
         about_window.title("About VideoGenerator")
-        about_window.geometry("400x500")
+        about_window.geometry("400x550")
         about_window.transient(self.root)
         about_window.resizable(False, False)
+        about_window.grab_set()  # Make modal
         
-        # Configure window background
-        about_window.configure(bg=self.colors['bg'])
+        # Configure grid
+        about_window.grid_columnconfigure(0, weight=1)
+        about_window.grid_rowconfigure(0, weight=1)
         
         # Main frame
-        about_frame = ttk.Frame(about_window, padding="30")
-        about_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame = ctk.CTkFrame(about_window)
+        main_frame.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
+        main_frame.grid_columnconfigure(0, weight=1)
         
         # Logo/Icon (if exists)
         icon_path = os.path.join(APPLICATION_PATH, 'icon.png')
         if os.path.exists(icon_path):
             try:
                 img = Image.open(icon_path)
-                img = img.resize((100, 100), Image.Resampling.LANCZOS)
-                photo = tk.PhotoImage(img)
-                icon_label = ttk.Label(about_frame, image=photo)
-                icon_label.pack(pady=(0, 20))
-                about_window.photo = photo  # Keep reference
+                img = img.resize((70, 70), Image.Resampling.LANCZOS)
+                # Convert to CTkImage
+                icon_image = ctk.CTkImage(light_image=img, dark_image=img, size=(70, 70))
+                icon_label = ctk.CTkLabel(main_frame, image=icon_image, text="")
+                icon_label.grid(row=0, column=0, pady=(25, 15))
             except:
                 pass
         
         # Title
-        title_label = ttk.Label(about_frame, text="VideoGenerator", 
-                               font=('System', 24, 'bold'))
-        title_label.pack()
+        title_label = ctk.CTkLabel(
+            main_frame, 
+            text="VideoGenerator", 
+            font=ctk.CTkFont(size=24, weight="bold")
+        )
+        title_label.grid(row=1, column=0, pady=(0, 8))
         
-        version_label = ttk.Label(about_frame, text="Version 1.2.0", 
-                                 font=('System', 14))
-        version_label.pack(pady=(5, 20))
+        version_label = ctk.CTkLabel(
+            main_frame, 
+            text="Version 1.3.0", 
+            font=ctk.CTkFont(size=14),
+            text_color="gray60"
+        )
+        version_label.grid(row=2, column=0, pady=(0, 25))
         
         # Description
         desc_text = """Create music videos by combining
 audio files with a static image.
 
-Optimized for macOS
-Bundled FFmpeg included"""
+✨ Optimized for macOS
+🚀 FFmpeg included
+🎨 Modern interface with CustomTkinter"""
         
-        desc_label = ttk.Label(about_frame, text=desc_text, 
-                              justify=tk.CENTER, font=('System', 12))
-        desc_label.pack(pady=(0, 20))
-        
-        # Separator
-        separator = ttk.Separator(about_frame, orient='horizontal')
-        separator.pack(fill=tk.X, pady=10)
+        desc_label = ctk.CTkLabel(
+            main_frame, 
+            text=desc_text, 
+            font=ctk.CTkFont(size=13),
+            justify="center"
+        )
+        desc_label.grid(row=3, column=0, pady=(0, 25))
         
         # Links
-        links_frame = ttk.Frame(about_frame)
-        links_frame.pack(pady=10)
+        links_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        links_frame.grid(row=4, column=0, pady=(0, 25))
         
-        github_btn = self.create_rounded_button(links_frame, "GitHub", 
-                                               lambda: subprocess.run(['open', 'https://github.com/Wamphyre/VideoGenerator']))
-        github_btn.pack(side=tk.LEFT, padx=5)
+        github_btn = ctk.CTkButton(
+            links_frame,
+            text="GitHub",
+            command=lambda: subprocess.run(['open', 'https://github.com/Wamphyre/VideoGenerator']),
+            width=100,
+            height=32
+        )
+        github_btn.grid(row=0, column=0, padx=8)
         
-        kofi_btn = self.create_rounded_button(links_frame, "Support on Ko-fi", 
-                                             lambda: subprocess.run(['open', 'https://ko-fi.com/wamphyre94078']))
-        kofi_btn.pack(side=tk.LEFT, padx=5)
+        kofi_btn = ctk.CTkButton(
+            links_frame,
+            text="Support",
+            command=lambda: subprocess.run(['open', 'https://ko-fi.com/wamphyre94078']),
+            width=100,
+            height=32,
+            fg_color="#FF5E5B",
+            hover_color="#FF4444"
+        )
+        kofi_btn.grid(row=0, column=1, padx=8)
         
         # Copyright
-        copyright_label = ttk.Label(about_frame, text="© 2024 Wamphyre", 
-                                   font=('System', 11))
-        copyright_label.pack(pady=(20, 0))
+        copyright_label = ctk.CTkLabel(
+            main_frame, 
+            text="© 2024 Wamphyre", 
+            font=ctk.CTkFont(size=11),
+            text_color="gray60"
+        )
+        copyright_label.grid(row=5, column=0, pady=(0, 5))
         
-        license_label = ttk.Label(about_frame, text="BSD 3-Clause License", 
-                                 font=('System', 10), foreground='gray')
-        license_label.pack()
+        license_label = ctk.CTkLabel(
+            main_frame, 
+            text="BSD 3-Clause License", 
+            font=ctk.CTkFont(size=10),
+            text_color="gray50"
+        )
+        license_label.grid(row=6, column=0, pady=(0, 25))
         
         # Close button
-        close_btn = self.create_rounded_button(about_frame, "Close", 
-                                              about_window.destroy)
-        close_btn.pack(pady=(30, 0))
+        close_btn = ctk.CTkButton(
+            main_frame,
+            text="Close",
+            command=about_window.destroy,
+            width=100,
+            height=35
+        )
+        close_btn.grid(row=7, column=0, pady=(0, 25))
     
     def quit_app(self):
         """Quit the application"""
@@ -1242,49 +1414,7 @@ Bundled FFmpeg included"""
     
     def run(self):
         """Run the application"""
-        if IS_MACOS:
-            # Configure application menu for macOS
-            menubar = tk.Menu(self.root)
-            self.root.config(menu=menubar)
-            
-            # VideoGenerator menu
-            app_menu = tk.Menu(menubar, tearoff=0)
-            menubar.add_cascade(label="VideoGenerator", menu=app_menu)
-            app_menu.add_command(label="About VideoGenerator", 
-                               command=self.show_about)
-            app_menu.add_separator()
-            app_menu.add_command(label="Preferences...", 
-                               command=self.show_preferences, accelerator="Cmd+,")
-            app_menu.add_separator()
-            app_menu.add_command(label="Quit", command=self.quit_app, 
-                               accelerator="Cmd+Q")
-            
-            # File menu
-            file_menu = tk.Menu(menubar, tearoff=0)
-            menubar.add_cascade(label="File", menu=file_menu)
-            file_menu.add_command(label="Select Audio Files...", 
-                                command=self.select_audio_files, accelerator="Cmd+O")
-            file_menu.add_command(label="Select Image...", 
-                                command=self.select_image, accelerator="Cmd+I")
-            file_menu.add_separator()
-            file_menu.add_command(label="Generate Video", 
-                                command=self.generate_video, accelerator="Cmd+G")
-            
-            # Edit menu
-            edit_menu = tk.Menu(menubar, tearoff=0)
-            menubar.add_cascade(label="Edit", menu=edit_menu)
-            edit_menu.add_command(label="Clear Log", 
-                                command=self.clear_log, accelerator="Cmd+L")
-            
-            # Keyboard shortcuts
-            self.root.bind('<Command-o>', lambda e: self.select_audio_files())
-            self.root.bind('<Command-i>', lambda e: self.select_image())
-            self.root.bind('<Command-g>', lambda e: self.generate_video())
-            self.root.bind('<Command-l>', lambda e: self.clear_log())
-            self.root.bind('<Command-q>', lambda e: self.quit_app())
-            self.root.bind('<Command-comma>', lambda e: self.show_preferences())
-        
-        # Window close protocol
+        # Configure window close protocol
         self.root.protocol("WM_DELETE_WINDOW", self.quit_app)
         
         # Center window
@@ -1293,26 +1423,14 @@ Bundled FFmpeg included"""
         y = (self.root.winfo_screenheight() // 2) - (self.root.winfo_height() // 2)
         self.root.geometry(f"+{x}+{y}")
         
+        # Start main loop
         self.root.mainloop()
 
 def main():
     """Main function"""
-    # Configure for high resolution on macOS
-    if IS_MACOS:
-        try:
-            # Try to configure for Retina
-            from tkinter import _tkinter
-            try:
-                # This may vary depending on Tk version
-                # Try to set Retina support
-                root = tk.Tk()
-                root.withdraw()
-                root.tk.call('tk', 'scaling', 2.0)
-                root.destroy()
-            except:
-                pass
-        except:
-            pass
+    # Set process name before creating the app
+    if platform.system() == 'Darwin':
+        set_process_name()
     
     # Create and run the application
     app = VideoGeneratorGUI()

@@ -1,8 +1,8 @@
 # VideoGenerator para macOS - Dependencias
 # Python 3.8+ requerido
 
-# Interfaz gráfica (incluida en Python, pero por si acaso)
-tk
+# Interfaz gráfica moderna
+customtkinter
 
 # Procesamiento de imágenes
 Pillow

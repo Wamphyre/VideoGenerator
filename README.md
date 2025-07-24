@@ -1,10 +1,11 @@
 # VideoGenerator
 
-A professional macOS application for creating music videos by combining audio files with static background images. Built with Python and optimized for macOS with native integration and hardware acceleration support.
+A professional macOS application for creating music videos by combining audio files with static background images. **Completely standalone** - no Python installation required!
 
 ![VideoGenerator](https://img.shields.io/badge/macOS-10.14+-blue.svg)
-![Python](https://img.shields.io/badge/Python-3.8+-green.svg)
+![Version](https://img.shields.io/badge/Version-1.3.0-green.svg)
 ![License](https://img.shields.io/badge/License-BSD%203--Clause-orange.svg)
+![Standalone](https://img.shields.io/badge/Standalone-No%20Dependencies-brightgreen.svg)
 
 ## 🎥 What is VideoGenerator?
 
@@ -17,6 +18,15 @@ VideoGenerator is a specialized tool designed for content creators, musicians, a
 - **Lyric videos** - Use custom background images with your music
 
 ## ✨ Key Features
+
+### 🆕 What's New in v1.3.0
+- **Completely Standalone** - No Python installation required on target machines
+- **Modern Interface** - Redesigned with CustomTkinter for better UX
+- **Clean Menu Bar** - Shows "VideoGenerator" instead of "Python"
+- **Enhanced System Info** - Displays GPU model and hardware acceleration status
+- **Improved Logging** - Better formatted activity log with timestamps
+- **Compact Design** - More efficient use of screen space
+- **Auto-contained FFmpeg** - Bundled and automatically detected
 
 ### 🎵 Audio Processing
 - **Multiple format support**: MP3, WAV, OGG, FLAC, AAC, M4A, WMA
@@ -37,24 +47,29 @@ VideoGenerator is a specialized tool designed for content creators, musicians, a
 - **Optimized encoding** for streaming and playback
 
 ### 🍎 macOS Integration
+- **Native app bundle** - No Python menu, shows "VideoGenerator"
 - **Finder integration** - Opens output location automatically
 - **Retina display support** - Optimized for high-DPI screens
 - **Keyboard shortcuts** - Power user friendly
+- **System notifications** - Completion alerts with sound
+- **Completely standalone** - No external dependencies required
 
 ## 📋 System Requirements
 
 - **macOS**: 10.14 (Mojave) or later
-- **Architecture**: Intel and Apple Silicon (Universal Binary)
-- **Python**: 3.8+ (bundled with dependencies)
-- **Storage**: ~100MB for application and dependencies
+- **Architecture**: Intel and Apple Silicon compatible
+- **Dependencies**: None! Everything is bundled
+- **Storage**: ~200MB for standalone application
+- **Memory**: 4GB RAM recommended for video processing
 
 ## 🚀 Installation
 
 ### Option 1: Download Release (Recommended)
-1. Download the latest `VideoGenerator-X.X.X.dmg` from [Releases](https://github.com/Wamphyre/VideoGenerator/releases)
+1. Download the latest `VideoGenerator-1.3.0.dmg` from [Releases](https://github.com/Wamphyre/VideoGenerator/releases)
 2. Double-click the DMG file to mount it
 3. Drag `VideoGenerator.app` to your Applications folder
 4. Launch from Applications or Spotlight
+5. **That's it!** No Python or dependencies needed
 
 ### Option 2: Build from Source
 ```bash
@@ -62,16 +77,18 @@ VideoGenerator is a specialized tool designed for content creators, musicians, a
 git clone https://github.com/Wamphyre/VideoGenerator.git
 cd VideoGenerator
 
-# Install Python dependencies
+# Install Python dependencies (for building only)
 pip3 install -r requirements.txt
 
-# Build native app (requires Xcode Command Line Tools)
-chmod +x build_with_platypus.sh
-./build_with_platypus.sh
+# Build standalone app (requires Xcode Command Line Tools)
+chmod +x build_app.sh
+./build_app.sh
 
 # Install the built app
 cp -r dist/VideoGenerator.app /Applications/
 ```
+
+> **Note**: The built app is completely standalone and includes Python + all dependencies. Users don't need Python installed!
 
 ## 🎯 How to Use
 
@@ -85,33 +102,37 @@ cp -r dist/VideoGenerator.app /Applications/
 ### Interface Overview
 
 #### Files Section
-- **Audio Files**: Select multiple audio files (automatically ordered by filename)
+- **Audio Files**: Browse and select multiple audio files (automatically ordered by filename)
 - **Background Image**: Choose a single image for the video background
-- **Output Settings**: Set save location and filename
+- **Output Settings**: Set save location and custom filename
 
-#### Encoding Options
+#### Settings Section
 - **Quality**: Choose from Low, Medium, High, or Ultra presets
-- **Hardware Acceleration**: Enable VideoToolbox for faster encoding (macOS only)
+- **Hardware Acceleration**: Enable VideoToolbox for faster encoding (automatically detected)
 - **Fade Effects**: Toggle fade in/out effects (2-second duration)
 
-#### Progress & Logging
+#### Progress & Generation
 - **Real-time progress bar** with percentage completion
-- **Detailed activity log** with timestamps
-- **FFmpeg output** for troubleshooting
+- **Generate Video**: Large, prominent button to start processing
+- **Activity Log**: Detailed log with timestamps and system information
+- **Utility Buttons**: Clear log and access settings
 
 ### Pro Tips
 - **File naming**: Number your audio files (01, 02, 03...) for proper ordering
 - **Image resolution**: Use high-resolution images (1920x1080 or higher) for best quality
-- **Hardware acceleration**: Enable for 2-3x faster encoding on supported Macs
+- **Hardware acceleration**: Automatically detected and enabled on supported Macs
 - **Quality settings**: Use "High" for most purposes, "Ultra" for archival quality
+- **System info**: Check the activity log to see your GPU model and acceleration status
+- **Standalone**: Share the app with others - no installation required!
 
 ## ⚙️ Technical Details
 
 ### Architecture
-- **Frontend**: Python/Tkinter with native macOS styling
+- **Frontend**: CustomTkinter with modern dark theme
 - **Backend**: FFmpeg for video processing and encoding
-- **Launcher**: Native C executable to eliminate Python branding
-- **Packaging**: macOS app bundle with embedded dependencies
+- **Launcher**: Bash wrapper with process name masking
+- **Packaging**: PyInstaller with complete Python runtime bundled
+- **Distribution**: Standalone macOS app bundle (no dependencies)
 
 ### Video Specifications
 - **Resolution**: 1920x1080 (Full HD)
@@ -132,29 +153,33 @@ cp -r dist/VideoGenerator.app /Applications/
 ```
 VideoGenerator/
 ├── videogenerator.py          # Main application code
-├── build_with_platypus.sh     # Build script for native app
-├── requirements.txt           # Python dependencies
+├── build_app.sh              # Build script for standalone app
+├── requirements.txt           # Python dependencies (for building)
 ├── ffmpeg                     # Bundled FFmpeg binary
 ├── icon.png                   # Application icon
+├── LICENSE                    # BSD-3 License
 └── dist/                      # Build output directory
-    ├── VideoGenerator.app     # Native macOS application
-    └── VideoGenerator-X.X.X.dmg # Distribution package
+    ├── VideoGenerator.app     # Standalone macOS application
+    └── VideoGenerator-1.3.0.dmg # Distribution package
 ```
 
-### Dependencies
-- **tkinter**: GUI framework (built into Python)
+### Dependencies (All Bundled)
+- **CustomTkinter**: Modern GUI framework with dark theme
 - **Pillow**: Image processing and optimization
 - **numpy**: Numerical operations for image handling
 - **psutil**: System information and process management
+- **Python 3.13**: Complete runtime bundled
 - **FFmpeg**: Video encoding and processing (bundled)
 
 ### Building
-The build process creates a native macOS application that:
-1. Compiles a C launcher to eliminate Python branding
-2. Bundles all Python dependencies
+The build process creates a completely standalone macOS application that:
+1. Uses PyInstaller to bundle Python runtime and all dependencies
+2. Creates a bash wrapper to mask the process name as "VideoGenerator"
 3. Includes FFmpeg binary for video processing
-4. Creates proper macOS app bundle structure
-5. Generates DMG for easy distribution
+4. Bundles all required libraries and frameworks
+5. Creates proper macOS app bundle structure with custom Info.plist
+6. Generates DMG for easy distribution
+7. Results in a ~200MB standalone app that works on any Mac
 
 ## 🤝 Contributing
 
@@ -164,8 +189,16 @@ Contributions are welcome! Please feel free to submit issues, feature requests, 
 ```bash
 git clone https://github.com/Wamphyre/VideoGenerator.git
 cd VideoGenerator
+
+# Install dependencies for development
 pip3 install -r requirements.txt
-python3 videogenerator.py  # Run in development mode
+
+# Run in development mode
+python3 videogenerator.py
+
+# Build standalone app
+chmod +x build_app.sh
+./build_app.sh
 ```
 
 ### Reporting Issues
